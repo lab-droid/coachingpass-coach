@@ -1,0 +1,5 @@
+{
+  "name": "코칭패스 맞춤 코치 조회 AI",
+  "description": "기업명을 입력하고 맞춤 코치 조회 버튼을 클릭하여 코치를 추천받는 AI",
+  "requestFramePermissions": []
+}
