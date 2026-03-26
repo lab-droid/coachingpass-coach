@@ -391,8 +391,8 @@ export default function App() {
                   <li className="flex gap-4">
                     <div className="flex-shrink-0 w-8 h-8 rounded-full bg-neutral-100 flex items-center justify-center font-bold text-neutral-900">1</div>
                     <div>
-                      <h4 className="font-semibold text-neutral-900 mb-1">API Key 등록</h4>
-                      <p className="text-sm text-neutral-600">우측 상단의 열쇠 아이콘을 클릭하여 Google Gemini API Key를 등록합니다.</p>
+                      <h4 className="font-semibold text-neutral-900 mb-1">API Key 자동 적용</h4>
+                      <p className="text-sm text-neutral-600">API Key는 자동 적용되어 있습니다. 별도의 등록 절차 없이 바로 조회가 가능합니다.</p>
                     </div>
                   </li>
                   <li className="flex gap-4">
@@ -406,7 +406,14 @@ export default function App() {
                     <div className="flex-shrink-0 w-8 h-8 rounded-full bg-neutral-100 flex items-center justify-center font-bold text-neutral-900">3</div>
                     <div>
                       <h4 className="font-semibold text-neutral-900 mb-1">맞춤 코치 조회</h4>
-                      <p className="text-sm text-neutral-600">조회 버튼을 클릭하면 AI가 대상 사이트를 정밀 크롤링 및 분석하여 적합한 코치를 추천해 드립니다.</p>
+                      <p className="text-sm text-neutral-600">조회 버튼을 클릭하면 AI가 대상 사이트를 정밀 분석하여 적합한 코치를 추천해 드립니다.</p>
+                    </div>
+                  </li>
+                  <li className="flex gap-4">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-neutral-100 flex items-center justify-center font-bold text-neutral-900">4</div>
+                    <div>
+                      <h4 className="font-semibold text-neutral-900 mb-1">로딩 지연 시 안내</h4>
+                      <p className="text-sm text-neutral-600">조회 시 1분 이상 로딩이 지속될 경우 일시적 오류일 수 있으니, 페이지 새로고침 후 다시 조회하시면 정상적으로 진행됩니다.</p>
                     </div>
                   </li>
                 </ol>
