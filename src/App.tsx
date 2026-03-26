@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Key, Info, ExternalLink, Wrench, Search, CheckCircle2 } from 'lucide-react';
+import { Key, Info, ExternalLink, Wrench, Search, CheckCircle2, MessageCircle, Sparkles } from 'lucide-react';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -129,31 +129,35 @@ export default function App() {
 지역: [다음 코치별 가능 지역] (이런 식으로 코치마다 문단을 분리하여 배치하세요)`;
 
       const fetchAndProcess = async (batch: any[], index: number) => {
-        try {
-          const listStr = batch.map(c => `- [${c.name}] ${c.url}\n  지역: ${c.region}`).join('\n');
-          const prompt = `[검색할 기업명]: "${companyName}"\n\n[초강력 경고]\n맞춤 코치 조회시 입력된 기업이 해당 코치의 웹사이트에 무조건 작성되어있을 경우만 분석 결과로 출력합니다. 해당 기업이 없는 코치들은 절대 분석 결과에 출력하지 않습니다.\n예를 들어, 기업에 '삼성전자'가 입력되고 맞춤 코치 조회를 할 경우 '삼성전자'가 웹사이트에 정확히 작성되어있는 코치들만 분석 결과에 출력되어야 합니다. 삼성전자뿐만 아니라 모든 기업이 동일하게 적용되어야 합니다.\nURL 접속 불가, 텍스트 크롤링 실패, 텍스트 내 기업명 미발견 시 해당 코치는 무조건 제외(Skip)하세요.\n\n[코치 목록]\n${listStr}`;
-          
-          const stream = await ai.models.generateContentStream({
-            model: "gemini-3-flash-preview",
-            contents: prompt,
-            config: { 
-              systemInstruction,
-              temperature: 0,
-              topK: 1,
-              tools: [{ urlContext: {} }] 
-            }
-          });
-          for await (const chunk of stream) {
-            results[index] += chunk.text;
-            updateUI();
+        const listStr = batch.map(c => `- [${c.name}] ${c.url}\n  지역: ${c.region}`).join('\n');
+        const prompt = `[검색할 기업명]: "${companyName}"\n\n[초강력 경고]\n맞춤 코치 조회시 입력된 기업이 해당 코치의 웹사이트에 무조건 작성되어있을 경우만 분석 결과로 출력합니다. 해당 기업이 없는 코치들은 절대 분석 결과에 출력하지 않습니다.\n예를 들어, 기업에 '삼성전자'가 입력되고 맞춤 코치 조회를 할 경우 '삼성전자'가 웹사이트에 정확히 작성되어있는 코치들만 분석 결과에 출력되어야 합니다. 삼성전자뿐만 아니라 모든 기업이 동일하게 적용되어야 합니다.\nURL 접속 불가, 텍스트 크롤링 실패, 텍스트 내 기업명 미발견 시 해당 코치는 무조건 제외(Skip)하세요.\n\n[코치 목록]\n${listStr}`;
+        
+        const stream = await ai.models.generateContentStream({
+          model: "gemini-3-flash-preview",
+          contents: prompt,
+          config: { 
+            systemInstruction,
+            temperature: 0,
+            topK: 1,
+            tools: [{ urlContext: {} }] 
           }
-        } catch (error) {
-          console.error(`Error processing stream ${index}:`, error);
+        });
+        for await (const chunk of stream) {
+          results[index] += chunk.text;
+          updateUI();
         }
       };
 
       // 모든 배치를 병렬로 처리하여 속도 개선
-      await Promise.all(batches.map((batch, i) => fetchAndProcess(batch, i)));
+      // Promise.allSettled를 사용하여 일부 실패하더라도 나머지는 진행되도록 함
+      const settledResults = await Promise.allSettled(batches.map((batch, i) => fetchAndProcess(batch, i)));
+      
+      // 모든 요청이 실패했는지 확인 (전부 실패 시 에러 처리)
+      const allFailed = settledResults.every(r => r.status === 'rejected');
+      if (allFailed) {
+        const firstError = (settledResults[0] as PromiseRejectedResult).reason;
+        throw firstError;
+      }
       
       updateUI(true); // 모든 스트림 완료 후 강제 UI 업데이트
 
@@ -173,10 +177,11 @@ export default function App() {
 
       if (finalCombined.trim() === "") {
         setResult("해당 기업과 관련된 맞춤 코치 조회 결과를 찾을 수 없습니다.");
+        setIsCompleted(false); // 결과가 없을 때는 완료 배너를 표시하지 않음
       } else {
         setResult("맞춤 코치 조회 결과:\n\n" + finalCombined.trim());
+        setIsCompleted(true);
       }
-      setIsCompleted(true);
     } catch (error: any) {
       console.error(error);
       let errorMessage = "오류가 발생했습니다. API Key가 유효한지 확인해주세요.";
@@ -373,19 +378,31 @@ export default function App() {
       </div>
 
       {/* Bottom Right Buttons */}
-      <div className="fixed bottom-6 right-6 flex flex-col gap-3 z-40">
+      <div className="fixed bottom-6 right-6 flex flex-col gap-3 z-40 items-end">
+        <a 
+          href="https://coachingpass.co.kr/consulting" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="relative group flex items-center gap-2 px-6 py-4 bg-gradient-to-r from-[#D4AF37] via-[#C5A017] to-[#B8860B] text-white rounded-full shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all duration-300"
+        >
+          <div className="absolute inset-0 bg-white/20 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
+          <div className="absolute -inset-1 bg-gradient-to-r from-[#F9F295] to-[#D4AF37] rounded-full blur opacity-40 group-hover:opacity-70 transition duration-500 animate-pulse"></div>
+          <MessageCircle className="w-5 h-5 relative z-10" />
+          <span className="font-bold text-[15px] relative z-10 tracking-wide drop-shadow-md">코칭패스 빠른상담신청하기</span>
+          <Sparkles className="w-4 h-4 relative z-10 text-[#F9F295] absolute top-2 right-4 animate-pulse" />
+        </a>
         <a 
           href="https://coachingpass.co.kr" 
           target="_blank" 
           rel="noopener noreferrer"
-          className="flex items-center gap-2 px-4 py-3 bg-white text-neutral-900 rounded-full shadow-lg border border-neutral-200 hover:bg-neutral-50 transition-all group"
+          className="flex items-center gap-2 px-4 py-3 bg-white text-neutral-900 rounded-full shadow-lg border border-neutral-200 hover:bg-neutral-50 transition-all group w-fit"
         >
           <span className="font-medium text-sm">코칭패스 홈페이지 바로가기</span>
           <ExternalLink className="w-4 h-4 text-neutral-500 group-hover:text-neutral-900 transition-colors" />
         </a>
         <button 
           onClick={() => setIsInquiryOpen(true)}
-          className="flex items-center justify-center gap-2 px-4 py-3 bg-neutral-900 text-white rounded-full shadow-lg hover:bg-neutral-800 transition-all"
+          className="flex items-center justify-center gap-2 px-4 py-3 bg-neutral-900 text-white rounded-full shadow-lg hover:bg-neutral-800 transition-all w-fit"
         >
           <Wrench className="w-4 h-4" />
           <span className="font-medium text-sm">오류/유지보수 문의</span>
