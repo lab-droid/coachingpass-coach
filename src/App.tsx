@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Key, Info, ExternalLink, Wrench, Search, CheckCircle2, MessageCircle, Sparkles } from 'lucide-react';
-import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
@@ -13,6 +12,20 @@ export default function App() {
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState('');
 
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const isCancelledRef = useRef<boolean>(false);
+
+  const handleCancel = () => {
+    isCancelledRef.current = true;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    setIsLoading(false);
+    setIsCompleted(false);
+    setProgress(0);
+    setResult("조회가 취소되었습니다.");
+  };
+
   const handleSearch = async () => {
     if (!companyName.trim()) {
       alert('기업명을 입력해주세요.');
@@ -24,14 +37,10 @@ export default function App() {
     setProgress(10);
     setResult('');
 
+    isCancelledRef.current = false;
+    abortControllerRef.current = new AbortController();
+
     try {
-      // AI Studio 환경에서 제공하는 안전한 내장 API Key를 사용합니다.
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        throw new Error("API Key가 설정되지 않았습니다. AI Studio 좌측 하단의 Settings(설정) 메뉴에서 'GEMINI_API_KEY'를 등록해주세요.");
-      }
-      
-      const ai = new GoogleGenAI({ apiKey });
       setProgress(30);
 
       const COACHES_DATA = [
@@ -116,44 +125,53 @@ export default function App() {
         }
       };
 
-      const systemInstruction = `당신은 코치 웹사이트 텍스트 검증 AI입니다.
-[최고 수준의 경고 및 절대 규칙]
-1. 제공된 URL의 "웹사이트 본문 텍스트"를 직접 읽고 검사하세요.
-2. 맞춤 코치 조회시 입력된 기업("${companyName}")이 해당 코치의 웹사이트에 무조건 작성되어있을 경우만 분석 결과로 출력합니다. 해당 기업이 없는 코치들은 절대 분석 결과에 출력하지 않습니다.
-3. [명확한 예시 기준]: 예를 들어, 기업에 '삼성전자'가 입력되고 맞춤 코치 조회를 할 경우 '삼성전자'가 웹사이트에 정확히 작성되어있는 코치들만 분석 결과에 출력되어야 합니다. 삼성전자뿐만 아니라 모든 기업("${companyName}")이 동일하게 적용되어야 합니다.
-4. 코치의 이름, 기존 지식, URL 주소만으로 기업명이 있다고 추측하거나 지어내면(할루시네이션) 절대 안 됩니다.
-5. 오직 크롤링된 텍스트 내에 "${companyName}"이 100% 일치하게 적혀 있는 코치만 결과에 남기세요.
-6. 조건에 맞는 코치가 한 명도 없다면 오직 "PASS"만 출력하세요.
-7. 조건에 맞는 코치가 있다면 아래 형식으로만 출력하세요. 코치가 여러 명일 경우 반드시 각 코치 사이에 빈 줄(엔터 두 번)을 넣어 문단을 명확히 구분하세요:
-[코치 이름] URL
-지역: [코치별 가능 지역]
-
-[다음 코치 이름] URL
-지역: [다음 코치별 가능 지역] (이런 식으로 코치마다 문단을 분리하여 배치하세요)`;
-
       const fetchAndProcess = async (batch: any[], index: number) => {
-        const listStr = batch.map(c => `- [${c.name}] ${c.url}\n  지역: ${c.region}`).join('\n');
-        const prompt = `[검색할 기업명]: "${companyName}"\n\n[초강력 경고]\n맞춤 코치 조회시 입력된 기업이 해당 코치의 웹사이트에 무조건 작성되어있을 경우만 분석 결과로 출력합니다. 해당 기업이 없는 코치들은 절대 분석 결과에 출력하지 않습니다.\n예를 들어, 기업에 '삼성전자'가 입력되고 맞춤 코치 조회를 할 경우 '삼성전자'가 웹사이트에 정확히 작성되어있는 코치들만 분석 결과에 출력되어야 합니다. 삼성전자뿐만 아니라 모든 기업이 동일하게 적용되어야 합니다.\nURL 접속 불가, 텍스트 크롤링 실패, 텍스트 내 기업명 미발견 시 해당 코치는 무조건 제외(Skip)하세요.\n\n[코치 목록]\n${listStr}`;
-        
-        const stream = await ai.models.generateContentStream({
-          model: "gemini-3-flash-preview",
-          contents: prompt,
-          config: { 
-            systemInstruction,
-            temperature: 0,
-            topK: 1,
-            tools: [{ urlContext: {} }] 
+        if (isCancelledRef.current) return;
+
+        const localController = new AbortController();
+        const timeoutId = setTimeout(() => localController.abort(), 25000); // 25초 타임아웃 설정
+
+        const globalSignal = abortControllerRef.current?.signal;
+        const abortHandler = () => localController.abort();
+        globalSignal?.addEventListener('abort', abortHandler);
+
+        try {
+          const response = await fetch('/api/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ companyName, batch }),
+            signal: localController.signal
+          });
+          
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `서버 오류가 발생했습니다 (${response.status})`);
           }
-        });
-        for await (const chunk of stream) {
-          results[index] += chunk.text;
-          updateUI();
+          
+          const data = await response.json();
+          if (!isCancelledRef.current) {
+            results[index] = data.result || "";
+            updateUI();
+          }
+        } catch (error: any) {
+          if (error.name === 'AbortError') {
+            if (isCancelledRef.current) return; // 사용자가 취소한 경우 무시
+            console.warn(`Batch ${index} timed out.`);
+            results[index] = "PASS"; // 타임아웃 시 빈 결과로 처리하고 넘어감
+            updateUI();
+            return;
+          }
+          throw error;
+        } finally {
+          clearTimeout(timeoutId);
+          globalSignal?.removeEventListener('abort', abortHandler);
         }
       };
 
       // 배치를 순차적으로 처리하여 API Rate Limit(429) 오류 방지
       const settledResults = [];
       for (let i = 0; i < batches.length; i++) {
+        if (isCancelledRef.current) break;
         try {
           await fetchAndProcess(batches[i], i);
           settledResults.push({ status: 'fulfilled', value: undefined });
@@ -162,6 +180,11 @@ export default function App() {
         }
       }
       
+      if (isCancelledRef.current) {
+        clearInterval(progressInterval);
+        return;
+      }
+
       // 모든 요청이 실패했는지 확인 (전부 실패 시 에러 처리)
       const allFailed = settledResults.every(r => r.status === 'rejected');
       if (allFailed) {
@@ -169,11 +192,6 @@ export default function App() {
         throw firstError;
       }
       
-      updateUI(true); // 모든 스트림 완료 후 강제 UI 업데이트
-
-      clearInterval(progressInterval);
-      setProgress(100);
-
       let finalCombined = "";
       results.forEach(res => {
         let finalRes = res.trim();
@@ -185,6 +203,9 @@ export default function App() {
         if (finalRes) finalCombined += finalRes + "\n\n";
       });
 
+      clearInterval(progressInterval);
+      setProgress(100);
+
       if (finalCombined.trim() === "") {
         setResult("해당 기업과 관련된 맞춤 코치 조회 결과를 찾을 수 없습니다.");
         setIsCompleted(false); // 결과가 없을 때는 완료 배너를 표시하지 않음
@@ -193,6 +214,7 @@ export default function App() {
         setIsCompleted(true);
       }
     } catch (error: any) {
+      if (isCancelledRef.current) return;
       console.error("API Error:", error);
       
       // 실제 발생한 오류 메시지를 포함하여 출력
@@ -207,12 +229,16 @@ export default function App() {
         errorMessage = "API Key가 유효하지 않습니다. 입력하신 API Key를 다시 확인해주세요.";
       } else if (actualErrorMsg.includes('must be set when running in a browser')) {
         errorMessage = "API Key가 설정되지 않았습니다. AI Studio 좌측 하단의 Settings(설정) 메뉴에서 'GEMINI_API_KEY'를 등록해주세요.";
+      } else if (actualErrorMsg.includes('API Timeout')) {
+        errorMessage = "서버 응답 시간이 초과되었습니다. 조회하려는 기업의 데이터가 너무 많거나 일시적인 네트워크 지연일 수 있습니다. 잠시 후 다시 시도해주세요.";
       }
       
       setResult(errorMessage);
       setProgress(0);
     } finally {
-      setIsLoading(false);
+      if (!isCancelledRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -273,13 +299,22 @@ export default function App() {
                   disabled={isLoading}
                 />
               </div>
-              <button
-                onClick={handleSearch}
-                disabled={isLoading || !companyName.trim()}
-                className="flex items-center justify-center px-8 py-4 bg-neutral-900 text-white rounded-xl font-medium hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-neutral-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-              >
-                {isLoading ? '조회 중...' : '맞춤 코치 조회'}
-              </button>
+              {isLoading ? (
+                <button
+                  onClick={handleCancel}
+                  className="flex items-center justify-center px-8 py-4 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-600 transition-all whitespace-nowrap"
+                >
+                  조회 취소
+                </button>
+              ) : (
+                <button
+                  onClick={handleSearch}
+                  disabled={!companyName.trim()}
+                  className="flex items-center justify-center px-8 py-4 bg-neutral-900 text-white rounded-xl font-medium hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-neutral-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all whitespace-nowrap"
+                >
+                  맞춤 코치 조회
+                </button>
+              )}
             </div>
 
             {/* Progress Bar */}
@@ -529,6 +564,17 @@ export default function App() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Floating Action Button */}
+      <a
+        href="https://coachingpass.co.kr/consulting"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3.5 rounded-full shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-300 font-semibold text-sm group"
+      >
+        <MessageCircle className="w-5 h-5 group-hover:animate-bounce" />
+        코칭패스 빠른상담신청하기
+      </a>
     </div>
   );
 }
