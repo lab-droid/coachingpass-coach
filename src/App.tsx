@@ -148,9 +148,16 @@ export default function App() {
         }
       };
 
-      // 모든 배치를 병렬로 처리하여 속도 개선
-      // Promise.allSettled를 사용하여 일부 실패하더라도 나머지는 진행되도록 함
-      const settledResults = await Promise.allSettled(batches.map((batch, i) => fetchAndProcess(batch, i)));
+      // 배치를 순차적으로 처리하여 API Rate Limit(429) 오류 방지
+      const settledResults = [];
+      for (let i = 0; i < batches.length; i++) {
+        try {
+          await fetchAndProcess(batches[i], i);
+          settledResults.push({ status: 'fulfilled', value: undefined });
+        } catch (err) {
+          settledResults.push({ status: 'rejected', reason: err });
+        }
+      }
       
       // 모든 요청이 실패했는지 확인 (전부 실패 시 에러 처리)
       const allFailed = settledResults.every(r => r.status === 'rejected');
@@ -183,11 +190,16 @@ export default function App() {
         setIsCompleted(true);
       }
     } catch (error: any) {
-      console.error(error);
-      let errorMessage = "오류가 발생했습니다. API Key가 유효한지 확인해주세요.";
+      console.error("API Error:", error);
       
-      if (error?.message?.includes('429') || error?.message?.includes('quota') || error?.message?.includes('RESOURCE_EXHAUSTED')) {
+      // 실제 발생한 오류 메시지를 포함하여 출력
+      const actualErrorMsg = error?.message || String(error);
+      let errorMessage = `오류가 발생했습니다.\n\n[상세 오류 내용]\n${actualErrorMsg}\n\nAPI Key가 유효한지, 또는 네트워크 연결이 정상인지 확인해주세요.`;
+      
+      if (actualErrorMsg.includes('429') || actualErrorMsg.includes('quota') || actualErrorMsg.includes('RESOURCE_EXHAUSTED')) {
         errorMessage = "API 사용량 한도를 초과했습니다 (429 Error). 잠시 후 다시 시도하거나, Google AI Studio에서 API 할당량 및 결제 정보를 확인해주세요.";
+      } else if (actualErrorMsg.includes('API key not valid') || actualErrorMsg.includes('API_KEY_INVALID')) {
+        errorMessage = "API Key가 유효하지 않습니다. 입력하신 API Key를 다시 확인해주세요.";
       }
       
       setResult(errorMessage);
