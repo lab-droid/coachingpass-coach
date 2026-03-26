@@ -349,6 +349,29 @@ export default function App() {
         </div>
       </main>
 
+      {/* Bottom Left Branding */}
+      <div className="fixed bottom-6 left-6 z-40 pointer-events-none select-none">
+        <motion.div
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.5, duration: 0.8 }}
+          className="flex flex-col"
+        >
+          <span className="text-[10px] uppercase tracking-[0.2em] text-neutral-500 font-bold mb-0.5 ml-1">
+            Success Key
+          </span>
+          <div className="relative group">
+            <div className="absolute -inset-1 bg-gradient-to-r from-[#D4AF37] to-[#B8860B] rounded-lg blur opacity-20 group-hover:opacity-40 transition duration-1000 group-hover:duration-200"></div>
+            <div className="relative px-4 py-2 bg-neutral-900/90 backdrop-blur-sm border border-neutral-800 rounded-lg flex items-center gap-2">
+              <Key className="w-4 h-4 text-[#D4AF37]" />
+              <span className="text-lg font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-[#F9F295] via-[#D4AF37] to-[#B8860B] drop-shadow-sm">
+                합격의 열쇠 코칭패스
+              </span>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+
       {/* Bottom Right Buttons */}
       <div className="fixed bottom-6 right-6 flex flex-col gap-3 z-40">
         <a 
