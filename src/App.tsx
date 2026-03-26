@@ -25,10 +25,8 @@ export default function App() {
     setResult('');
 
     try {
-      // 사용자 요청에 따라 특정 API Key를 하드코딩하여 인증 없이 사용 가능하도록 설정
-      // 주의: 보안을 위해 실제 운영 환경에서는 환경 변수 사용을 권장합니다.
-      const API_KEY = "AIzaSyDVCfg17Ki69e-t08ATaPL4kkUgve9IyHo";
-      const ai = new GoogleGenAI({ apiKey: API_KEY });
+      // AI Studio 환경에서 제공하는 안전한 내장 API Key를 사용합니다.
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       setProgress(30);
 
       const COACHES_DATA = [
