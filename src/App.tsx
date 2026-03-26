@@ -26,7 +26,12 @@ export default function App() {
 
     try {
       // AI Studio 환경에서 제공하는 안전한 내장 API Key를 사용합니다.
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error("API Key가 설정되지 않았습니다. AI Studio 좌측 하단의 Settings(설정) 메뉴에서 'GEMINI_API_KEY'를 등록해주세요.");
+      }
+      
+      const ai = new GoogleGenAI({ apiKey });
       setProgress(30);
 
       const COACHES_DATA = [
@@ -194,10 +199,14 @@ export default function App() {
       const actualErrorMsg = error?.message || String(error);
       let errorMessage = `오류가 발생했습니다.\n\n[상세 오류 내용]\n${actualErrorMsg}\n\nAPI Key가 유효한지, 또는 네트워크 연결이 정상인지 확인해주세요.`;
       
-      if (actualErrorMsg.includes('429') || actualErrorMsg.includes('quota') || actualErrorMsg.includes('RESOURCE_EXHAUSTED')) {
+      if (actualErrorMsg.includes('API Key가 설정되지 않았습니다')) {
+        errorMessage = actualErrorMsg;
+      } else if (actualErrorMsg.includes('429') || actualErrorMsg.includes('quota') || actualErrorMsg.includes('RESOURCE_EXHAUSTED')) {
         errorMessage = "API 사용량 한도를 초과했습니다 (429 Error). 잠시 후 다시 시도하거나, Google AI Studio에서 API 할당량 및 결제 정보를 확인해주세요.";
       } else if (actualErrorMsg.includes('API key not valid') || actualErrorMsg.includes('API_KEY_INVALID')) {
         errorMessage = "API Key가 유효하지 않습니다. 입력하신 API Key를 다시 확인해주세요.";
+      } else if (actualErrorMsg.includes('must be set when running in a browser')) {
+        errorMessage = "API Key가 설정되지 않았습니다. AI Studio 좌측 하단의 Settings(설정) 메뉴에서 'GEMINI_API_KEY'를 등록해주세요.";
       }
       
       setResult(errorMessage);
