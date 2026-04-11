@@ -1,6 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Key, Info, ExternalLink, Wrench, Search, CheckCircle2, MessageCircle, Sparkles } from 'lucide-react';
+import { Key, Info, ExternalLink, Wrench, Search, CheckCircle2, MessageCircle, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+
+interface CoachResult {
+  name: string;
+  url: string;
+  region: string;
+  interviewerHistory?: string | null;
+  whyChoose?: string | null;
+}
 
 export default function App() {
   const [isHelpOpen, setIsHelpOpen] = useState(false);
@@ -10,7 +18,8 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [result, setResult] = useState('');
+  const [result, setResult] = useState<string | null>(null);
+  const [coachResults, setCoachResults] = useState<CoachResult[]>([]);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const isCancelledRef = useRef<boolean>(false);
@@ -94,7 +103,7 @@ export default function App() {
         });
       }, 100);
 
-      const results = new Array(batches.length).fill("");
+      const results: CoachResult[][] = new Array(batches.length).fill([]);
 
       let lastUpdateTime = 0;
       const updateUI = (force = false) => {
@@ -103,25 +112,11 @@ export default function App() {
         if (!force && now - lastUpdateTime < 100) return;
         lastUpdateTime = now;
 
-        let combined = "맞춤 코치 조회 결과:\n\n";
-        let hasContent = false;
+        const allCoaches = results.flat().filter(Boolean);
+        setCoachResults(allCoaches);
         
-        results.forEach(res => {
-          let display = res.trim();
-          if (display === "P" || display === "PA" || display === "PAS" || display === "PASS") {
-            display = "";
-          } else {
-            display = display.replace(/PASS/g, '').trim();
-          }
-          
-          if (display) {
-            combined += display + "\n\n";
-            hasContent = true;
-          }
-        });
-
-        if (hasContent) {
-          setResult(combined.trim());
+        if (allCoaches.length > 0) {
+          setResult(null); // Clear string result if we have coach objects
         }
       };
 
@@ -150,14 +145,15 @@ export default function App() {
           
           const data = await response.json();
           if (!isCancelledRef.current) {
-            results[index] = data.result || "";
+            // data.result is now an array of CoachResult objects
+            results[index] = Array.isArray(data.result) ? data.result : [];
             updateUI();
           }
         } catch (error: any) {
           if (error.name === 'AbortError') {
             if (isCancelledRef.current) return; // 사용자가 취소한 경우 무시
             console.warn(`Batch ${index} timed out.`);
-            results[index] = "PASS"; // 타임아웃 시 빈 결과로 처리하고 넘어감
+            results[index] = []; // 타임아웃 시 빈 결과로 처리하고 넘어감
             updateUI();
             return;
           }
@@ -192,25 +188,18 @@ export default function App() {
         throw firstError;
       }
       
-      let finalCombined = "";
-      results.forEach(res => {
-        let finalRes = res.trim();
-        if (finalRes === "P" || finalRes === "PA" || finalRes === "PAS" || finalRes === "PASS") {
-          finalRes = "";
-        } else {
-          finalRes = finalRes.replace(/PASS/g, '').trim();
-        }
-        if (finalRes) finalCombined += finalRes + "\n\n";
-      });
+      const finalCoaches = results.flat().filter(Boolean);
 
       clearInterval(progressInterval);
       setProgress(100);
 
-      if (finalCombined.trim() === "") {
+      if (finalCoaches.length === 0) {
         setResult("해당 기업과 관련된 맞춤 코치 조회 결과를 찾을 수 없습니다.");
+        setCoachResults([]);
         setIsCompleted(false); // 결과가 없을 때는 완료 배너를 표시하지 않음
       } else {
-        setResult("맞춤 코치 조회 결과:\n\n" + finalCombined.trim());
+        setCoachResults(finalCoaches);
+        setResult(`조회 결과, '${companyName}' 기업과 관련된 코칭 및 합격 경험을 보유한 코치는 다음과 같습니다:\n\n각 코치의 상세 프로필을 확인하여 가장 적합한 코치를 선택해 보세요.`);
         setIsCompleted(true);
       }
     } catch (error: any) {
@@ -243,22 +232,17 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-100 font-sans text-neutral-900 selection:bg-neutral-300">
+    <div className="min-h-screen bg-gradient-to-br from-[#0a0a0a] via-[#1a1813] to-[#2a2410] font-sans text-neutral-100 selection:bg-[#D4AF37]/30">
       {/* Header */}
-      <header className="fixed top-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md border-b border-neutral-200 z-40 flex items-center justify-between px-4 sm:px-6">
+      <header className="fixed top-0 left-0 right-0 h-16 bg-black/80 backdrop-blur-md border-b border-[#D4AF37]/20 z-40 flex items-center justify-between px-4 sm:px-6">
         <div className="flex items-center">
           <button 
             onClick={() => setIsHelpOpen(true)}
-            className="flex items-center gap-2 text-sm font-medium text-neutral-600 hover:text-neutral-900 transition-colors"
+            className="flex items-center gap-2 text-sm font-medium text-neutral-400 hover:text-[#D4AF37] transition-colors"
           >
             <Info className="w-5 h-5" />
             <span className="hidden sm:inline">사용방법</span>
           </button>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="text-xs font-medium text-neutral-500 hidden sm:block">
-            개발자: 정혁신
-          </div>
         </div>
       </header>
 
@@ -282,40 +266,44 @@ export default function App() {
         </div>
 
         {/* Search Section */}
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 -mt-8 relative z-10">
-          <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8 border border-neutral-100">
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="relative flex-1">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Search className="h-5 w-5 text-neutral-400" />
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 -mt-12 relative z-20">
+          <div className="relative group">
+            {/* Animated Glow Background */}
+            <div className="absolute -inset-1 bg-gradient-to-r from-[#F9F295] via-[#D4AF37] to-[#B8860B] rounded-[2rem] blur-lg opacity-30 group-hover:opacity-50 transition duration-500"></div>
+            
+            <div className="relative bg-white rounded-[2rem] shadow-2xl p-6 sm:p-10 border border-[#D4AF37]/40">
+              <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
+                <div className="relative flex-1">
+                  <div className="absolute inset-y-0 left-0 pl-6 flex items-center pointer-events-none">
+                    <Search className="h-6 w-6 text-[#D4AF37]" />
+                  </div>
+                  <input
+                    type="text"
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                    placeholder="기업명을 입력하세요 (예: 삼성전자)"
+                    className="block w-full pl-16 pr-6 py-5 sm:py-6 bg-neutral-50 border-2 border-neutral-200 rounded-2xl text-neutral-900 placeholder-neutral-400 focus:outline-none focus:ring-4 focus:ring-[#D4AF37]/20 focus:border-[#D4AF37] transition-all text-lg sm:text-xl font-medium shadow-inner"
+                    disabled={isLoading}
+                  />
                 </div>
-                <input
-                  type="text"
-                  value={companyName}
-                  onChange={(e) => setCompanyName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                  placeholder="기업명을 입력하세요 (예: 삼성전자, 현대자동차)"
-                  className="block w-full pl-11 pr-4 py-4 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-900 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent transition-all"
-                  disabled={isLoading}
-                />
+                {isLoading ? (
+                  <button
+                    onClick={handleCancel}
+                    className="flex items-center justify-center px-8 sm:px-10 py-5 sm:py-6 bg-neutral-100 border-2 border-neutral-200 text-neutral-600 rounded-2xl font-bold hover:bg-neutral-200 hover:text-neutral-900 focus:outline-none focus:ring-4 focus:ring-neutral-200 transition-all whitespace-nowrap text-lg sm:text-xl"
+                  >
+                    조회 취소
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleSearch}
+                    disabled={!companyName.trim()}
+                    className="flex items-center justify-center px-8 sm:px-10 py-5 sm:py-6 bg-gradient-to-r from-[#D4AF37] to-[#B8860B] text-white rounded-2xl font-bold hover:from-[#B8860B] hover:to-[#996515] shadow-[0_0_20px_rgba(212,175,55,0.3)] hover:shadow-[0_0_30px_rgba(212,175,55,0.5)] focus:outline-none focus:ring-4 focus:ring-[#D4AF37]/40 disabled:opacity-50 disabled:cursor-not-allowed transition-all whitespace-nowrap text-lg sm:text-xl transform hover:-translate-y-1"
+                  >
+                    맞춤 코치 조회
+                  </button>
+                )}
               </div>
-              {isLoading ? (
-                <button
-                  onClick={handleCancel}
-                  className="flex items-center justify-center px-8 py-4 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-600 transition-all whitespace-nowrap"
-                >
-                  조회 취소
-                </button>
-              ) : (
-                <button
-                  onClick={handleSearch}
-                  disabled={!companyName.trim()}
-                  className="flex items-center justify-center px-8 py-4 bg-neutral-900 text-white rounded-xl font-medium hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-neutral-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all whitespace-nowrap"
-                >
-                  맞춤 코치 조회
-                </button>
-              )}
-            </div>
 
             {/* Progress Bar */}
             <AnimatePresence>
@@ -327,12 +315,12 @@ export default function App() {
                   className="mt-6 overflow-hidden"
                 >
                   <div className="flex justify-between text-sm font-medium text-neutral-600 mb-2">
-                    <span>데이터 분석 및 크롤링 진행 중...</span>
-                    <span>{progress}%</span>
+                    <span>해당 기업의 맞춤 코치를 조회중입니다. 잠시만 기다려주세요!</span>
+                    <span className="text-[#D4AF37]">{progress}%</span>
                   </div>
-                  <div className="w-full bg-neutral-100 rounded-full h-2.5 overflow-hidden">
+                  <div className="w-full bg-neutral-100 border border-neutral-200 rounded-full h-2.5 overflow-hidden">
                     <motion.div 
-                      className="bg-neutral-900 h-2.5 rounded-full"
+                      className="bg-gradient-to-r from-[#F9F295] via-[#D4AF37] to-[#B8860B] h-2.5 rounded-full"
                       initial={{ width: 0 }}
                       animate={{ width: `${progress}%` }}
                       transition={{ duration: 0.5 }}
@@ -349,79 +337,104 @@ export default function App() {
                   initial={{ opacity: 0, y: -20, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -20, scale: 0.95 }}
-                  className="mt-8 p-4 bg-green-50 border border-green-200 rounded-xl flex items-center justify-center gap-3 text-green-800 shadow-sm"
+                  className="mt-8 p-4 bg-gradient-to-r from-[#1a1a1a] to-black border border-[#D4AF37]/30 rounded-xl flex items-center justify-center gap-3 text-[#D4AF37] shadow-lg"
                 >
                   <motion.div
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
                     transition={{ type: "spring", stiffness: 200, damping: 10, delay: 0.1 }}
                   >
-                    <CheckCircle2 className="w-6 h-6 text-green-600" />
+                    <CheckCircle2 className="w-6 h-6 text-[#D4AF37]" />
                   </motion.div>
-                  <span className="font-bold text-lg">조회가 완료되었습니다!</span>
+                  <span className="font-bold text-lg tracking-tight">조회가 완료되었습니다!</span>
                 </motion.div>
               )}
             </AnimatePresence>
 
             {/* Result Section */}
             <AnimatePresence>
-              {result && (
+              {(result || coachResults.length > 0) && (
                 <motion.div 
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="mt-8 p-6 bg-neutral-50 rounded-xl border border-neutral-200"
+                  className="mt-8 p-6 bg-[#1a1a1a] rounded-xl border border-[#D4AF37]/30 shadow-lg"
                 >
-                  <h3 className="text-lg font-semibold text-neutral-900 mb-4 flex items-center gap-2">
-                    <CheckCircle2 className="w-5 h-5 text-green-600" />
-                    분석 결과
+                  <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-[#D4AF37]" />
+                    조회 결과
                   </h3>
-                  <div className="text-neutral-700 leading-relaxed whitespace-pre-wrap select-none">
-                    {result.split(/(https?:\/\/[^\s]+)/g).map((part, index) => {
-                      if (part.match(/(https?:\/\/[^\s]+)/g)) {
-                        let cleanUrl = part;
-                        let trailing = '';
-                        if (/[.,;)?!]$/.test(part)) {
-                          trailing = part.slice(-1);
-                          cleanUrl = part.slice(0, -1);
+                  
+                  {result && (
+                    <div className="text-neutral-300 leading-relaxed whitespace-pre-wrap select-none mb-4">
+                      {result.split(/(https?:\/\/[^\s]+)/g).map((part, index) => {
+                        if (part.match(/(https?:\/\/[^\s]+)/g)) {
+                          let cleanUrl = part;
+                          let trailing = '';
+                          if (/[.,;)?!]$/.test(part)) {
+                            trailing = part.slice(-1);
+                            cleanUrl = part.slice(0, -1);
+                          }
+                          return (
+                            <React.Fragment key={index}>
+                              <a 
+                                href={cleanUrl} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-[#D4AF37] hover:text-[#F9F295] underline"
+                              >
+                                {cleanUrl}
+                              </a>
+                              {trailing}
+                            </React.Fragment>
+                          );
                         }
-                        return (
-                          <React.Fragment key={index}>
+                        return <span key={index}>{part}</span>;
+                      })}
+                    </div>
+                  )}
+
+                  {coachResults.length > 0 && (
+                    <div className="flex flex-col gap-4 mt-2">
+                      {coachResults.map((coach, idx) => (
+                        <div key={idx} className="border border-[#D4AF37]/20 rounded-lg overflow-hidden bg-[#111111] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                          <div>
+                            <div className="font-bold text-lg text-white">{coach.name}</div>
                             <a 
-                              href={cleanUrl} 
+                              href={coach.url} 
                               target="_blank" 
                               rel="noopener noreferrer"
-                              className="text-blue-600 hover:text-blue-800 underline"
+                              className="text-sm text-[#D4AF37] hover:text-[#F9F295] hover:underline mt-1 block break-all"
                             >
-                              {cleanUrl}
+                              {coach.url}
                             </a>
-                            {trailing}
-                          </React.Fragment>
-                        );
-                      }
-                      return <span key={index}>{part}</span>;
-                    })}
-                  </div>
+                            <div className="text-sm text-neutral-400 mt-2">{coach.region}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
+          </div>
           </div>
         </div>
       </main>
 
       {/* Bottom Left Branding */}
-      <div className="fixed bottom-6 left-6 z-40 pointer-events-none select-none">
+      <div className="fixed bottom-4 left-4 sm:bottom-6 sm:left-6 z-40 pointer-events-none select-none hidden md:block">
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.5, duration: 0.8 }}
           className="flex flex-col"
         >
-          <span className="text-[10px] uppercase tracking-[0.2em] text-neutral-500 font-bold mb-0.5 ml-1">
+          <span className="text-[10px] uppercase tracking-[0.2em] text-[#D4AF37] font-bold mb-0.5 ml-1">
             Success Key
           </span>
           <div className="relative group">
             <div className="absolute -inset-1 bg-gradient-to-r from-[#D4AF37] to-[#B8860B] rounded-lg blur opacity-20 group-hover:opacity-40 transition duration-1000 group-hover:duration-200"></div>
-            <div className="relative px-4 py-2 bg-neutral-900/90 backdrop-blur-sm border border-neutral-800 rounded-lg flex items-center gap-2">
+            <div className="relative px-4 py-2 bg-black/90 backdrop-blur-sm border border-[#D4AF37]/20 rounded-lg flex items-center gap-2">
               <Key className="w-4 h-4 text-[#D4AF37]" />
               <span className="text-lg font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-[#F9F295] via-[#D4AF37] to-[#B8860B] drop-shadow-sm">
                 합격의 열쇠 코칭패스
@@ -432,95 +445,92 @@ export default function App() {
       </div>
 
       {/* Bottom Right Buttons */}
-      <div className="fixed bottom-6 right-6 flex flex-col gap-3 z-40 items-end">
-        <a 
-          href="https://coachingpass.co.kr/consulting" 
-          target="_blank" 
-          rel="noopener noreferrer"
-          className="relative group flex items-center gap-2 px-6 py-4 bg-gradient-to-r from-[#D4AF37] via-[#C5A017] to-[#B8860B] text-white rounded-full shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all duration-300"
-        >
-          <div className="absolute inset-0 bg-white/20 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          <div className="absolute -inset-1 bg-gradient-to-r from-[#F9F295] to-[#D4AF37] rounded-full blur opacity-40 group-hover:opacity-70 transition duration-500 animate-pulse"></div>
-          <MessageCircle className="w-5 h-5 relative z-10" />
-          <span className="font-bold text-[15px] relative z-10 tracking-wide drop-shadow-md">코칭패스 빠른상담신청하기</span>
-          <Sparkles className="w-4 h-4 relative z-10 text-[#F9F295] absolute top-2 right-4 animate-pulse" />
-        </a>
+      <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 flex flex-col gap-2 sm:gap-3 z-40 items-end">
         <a 
           href="https://coachingpass.co.kr" 
           target="_blank" 
           rel="noopener noreferrer"
-          className="flex items-center gap-2 px-4 py-3 bg-white text-neutral-900 rounded-full shadow-lg border border-neutral-200 hover:bg-neutral-50 transition-all group w-fit"
+          className="flex items-center gap-2 px-4 py-2.5 sm:py-3 bg-[#111111] text-neutral-300 rounded-full shadow-lg border border-[#D4AF37]/30 hover:border-[#D4AF37] hover:bg-[#1a1a1a] hover:text-white transition-all group w-fit"
         >
-          <span className="font-medium text-sm">코칭패스 홈페이지 바로가기</span>
-          <ExternalLink className="w-4 h-4 text-neutral-500 group-hover:text-neutral-900 transition-colors" />
+          <span className="font-medium text-xs sm:text-sm">홈페이지 바로가기</span>
+          <ExternalLink className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#D4AF37] group-hover:text-[#F9F295] transition-colors" />
         </a>
         <button 
           onClick={() => setIsInquiryOpen(true)}
-          className="flex items-center justify-center gap-2 px-4 py-3 bg-neutral-900 text-white rounded-full shadow-lg hover:bg-neutral-800 transition-all w-fit"
+          className="flex items-center justify-center gap-2 px-4 py-2.5 sm:py-3 bg-[#111111] text-neutral-300 rounded-full shadow-lg border border-[#D4AF37]/30 hover:border-[#D4AF37] hover:bg-[#1a1a1a] hover:text-white transition-all w-fit group"
         >
-          <Wrench className="w-4 h-4" />
-          <span className="font-medium text-sm">오류/유지보수 문의</span>
+          <Wrench className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#D4AF37] group-hover:text-[#F9F295] transition-colors" />
+          <span className="font-medium text-xs sm:text-sm">오류/유지보수 문의</span>
         </button>
+        <a
+          href="https://coachingpass.co.kr/consulting"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2 bg-gradient-to-r from-[#D4AF37] to-[#B8860B] text-white px-5 sm:px-6 py-3 sm:py-3.5 rounded-full shadow-lg shadow-[#D4AF37]/30 border border-[#B8860B] hover:shadow-xl hover:shadow-[#D4AF37]/40 hover:scale-105 transition-all duration-300 font-semibold text-xs sm:text-sm group mt-1 sm:mt-2"
+        >
+          <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5 group-hover:animate-bounce" />
+          빠른상담신청하기
+        </a>
       </div>
 
       {/* Modals */}
       <AnimatePresence>
         {/* Help Modal */}
         {isHelpOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]"
+              className="bg-[#111111] border border-[#D4AF37]/30 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]"
             >
-              <div className="p-6 border-b border-neutral-100 flex justify-between items-center">
-                <h2 className="text-xl font-bold text-neutral-900">사용방법</h2>
-                <button onClick={() => setIsHelpOpen(false)} className="text-neutral-400 hover:text-neutral-900">
+              <div className="p-6 border-b border-[#D4AF37]/20 flex justify-between items-center">
+                <h2 className="text-xl font-bold text-white">사용방법</h2>
+                <button onClick={() => setIsHelpOpen(false)} className="text-neutral-400 hover:text-[#D4AF37]">
                   ✕
                 </button>
               </div>
               <div className="p-6 overflow-y-auto">
                 <ol className="space-y-6">
                   <li className="flex gap-4">
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-neutral-100 flex items-center justify-center font-bold text-neutral-900">1</div>
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#1a1a1a] border border-[#D4AF37]/30 flex items-center justify-center font-bold text-[#D4AF37]">1</div>
                     <div>
-                      <h4 className="font-semibold text-neutral-900 mb-1">API Key 자동 적용</h4>
-                      <p className="text-sm text-neutral-600">API Key는 자동 적용되어 있습니다. 별도의 등록 절차 없이 바로 조회가 가능합니다.</p>
+                      <h4 className="font-semibold text-white mb-1">API Key 자동 적용</h4>
+                      <p className="text-sm text-neutral-400">API Key는 자동 적용되어 있습니다. 별도의 등록 절차 없이 바로 조회가 가능합니다.</p>
                     </div>
                   </li>
                   <li className="flex gap-4">
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-neutral-100 flex items-center justify-center font-bold text-neutral-900">2</div>
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#1a1a1a] border border-[#D4AF37]/30 flex items-center justify-center font-bold text-[#D4AF37]">2</div>
                     <div>
-                      <h4 className="font-semibold text-neutral-900 mb-1">기업명 입력</h4>
-                      <p className="text-sm text-neutral-600">조회하고자 하는 기업명(예: 삼성전자, 카카오 등)을 입력창에 작성합니다.</p>
+                      <h4 className="font-semibold text-white mb-1">기업명 입력</h4>
+                      <p className="text-sm text-neutral-400">조회하고자 하는 기업명(예: 삼성전자, 카카오 등)을 입력창에 작성합니다.</p>
                     </div>
                   </li>
                   <li className="flex gap-4">
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-neutral-100 flex items-center justify-center font-bold text-neutral-900">3</div>
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#1a1a1a] border border-[#D4AF37]/30 flex items-center justify-center font-bold text-[#D4AF37]">3</div>
                     <div>
-                      <h4 className="font-semibold text-neutral-900 mb-1">맞춤 코치 조회</h4>
-                      <p className="text-sm text-neutral-600">조회 버튼을 클릭하면 AI가 대상 사이트를 정밀 분석하여 적합한 코치를 추천해 드립니다.</p>
+                      <h4 className="font-semibold text-white mb-1">맞춤 코치 조회</h4>
+                      <p className="text-sm text-neutral-400">조회 버튼을 클릭하면 AI가 대상 사이트를 정밀 분석하여 적합한 코치를 추천해 드립니다.</p>
                     </div>
                   </li>
                   <li className="flex gap-4">
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-neutral-100 flex items-center justify-center font-bold text-neutral-900">4</div>
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#1a1a1a] border border-[#D4AF37]/30 flex items-center justify-center font-bold text-[#D4AF37]">4</div>
                     <div>
-                      <h4 className="font-semibold text-neutral-900 mb-1">로딩 지연 시 안내</h4>
-                      <p className="text-sm text-neutral-600">조회 시 1분 이상 로딩이 지속될 경우 일시적 오류일 수 있으니, 페이지 새로고침 후 다시 조회하시면 정상적으로 진행됩니다.</p>
+                      <h4 className="font-semibold text-white mb-1">로딩 지연 시 안내</h4>
+                      <p className="text-sm text-neutral-400">조회 시 1분 이상 로딩이 지속될 경우 일시적 오류일 수 있으니, 페이지 새로고침 후 다시 조회하시면 정상적으로 진행됩니다.</p>
                     </div>
                   </li>
                 </ol>
-                <div className="mt-8 p-4 bg-neutral-50 rounded-xl border border-neutral-200">
-                  <p className="text-xs text-neutral-500 text-center">
+                <div className="mt-8 p-4 bg-[#1a1a1a] rounded-xl border border-[#D4AF37]/20">
+                  <p className="text-xs text-neutral-400 text-center">
                     본 서비스는 지속적으로 업데이트되며, 사용방법 또한 최신 기능에 맞게 자동 업데이트됩니다.
                   </p>
                 </div>
               </div>
-              <div className="p-4 border-t border-neutral-100 bg-neutral-50 flex justify-end">
+              <div className="p-4 border-t border-[#D4AF37]/20 bg-[#111111] flex justify-end">
                 <button 
                   onClick={() => setIsHelpOpen(false)}
-                  className="px-5 py-2 text-sm font-medium bg-neutral-900 text-white hover:bg-neutral-800 rounded-lg transition-colors"
+                  className="px-5 py-2 text-sm font-medium bg-[#D4AF37] text-black hover:bg-[#F9F295] rounded-lg transition-colors"
                 >
                   확인
                 </button>
@@ -531,30 +541,30 @@ export default function App() {
 
         {/* Inquiry Modal */}
         {isInquiryOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+              className="bg-[#111111] border border-[#D4AF37]/30 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
             >
               <div className="p-6">
-                <h2 className="text-xl font-bold text-neutral-900 mb-4 flex items-center gap-2">
-                  <Wrench className="w-5 h-5" />
+                <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                  <Wrench className="w-5 h-5 text-[#D4AF37]" />
                   오류/유지보수 문의
                 </h2>
-                <div className="bg-neutral-50 p-4 rounded-xl border border-neutral-200 mb-6">
-                  <p className="text-sm text-neutral-700 leading-relaxed">
+                <div className="bg-[#1a1a1a] p-4 rounded-xl border border-[#D4AF37]/20 mb-6">
+                  <p className="text-sm text-neutral-300 leading-relaxed">
                     업데이트나 유지보수가 필요할 경우 아래 이메일로 어떤 부분이 필요한지 상세하게 작성 후 보내주세요.
                   </p>
-                  <div className="mt-4 font-mono text-sm font-medium text-neutral-900 bg-white px-3 py-2 rounded-lg border border-neutral-200 inline-block">
+                  <div className="mt-4 font-mono text-sm font-medium text-[#D4AF37] bg-[#111111] px-3 py-2 rounded-lg border border-[#D4AF37]/30 inline-block">
                     info@nextin.ai.kr
                   </div>
                 </div>
                 <div className="flex justify-end">
                   <button 
                     onClick={() => setIsInquiryOpen(false)}
-                    className="px-5 py-2.5 text-sm font-medium bg-neutral-900 text-white hover:bg-neutral-800 rounded-lg transition-colors"
+                    className="px-5 py-2.5 text-sm font-medium bg-[#D4AF37] text-black hover:bg-[#F9F295] rounded-lg transition-colors"
                   >
                     닫기
                   </button>
@@ -564,17 +574,6 @@ export default function App() {
           </div>
         )}
       </AnimatePresence>
-
-      {/* Floating Action Button */}
-      <a
-        href="https://coachingpass.co.kr/consulting"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3.5 rounded-full shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-300 font-semibold text-sm group"
-      >
-        <MessageCircle className="w-5 h-5 group-hover:animate-bounce" />
-        코칭패스 빠른상담신청하기
-      </a>
     </div>
   );
 }

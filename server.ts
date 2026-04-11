@@ -41,20 +41,28 @@ async function startServer() {
           const html = await response.text();
           const $ = cheerio.load(html);
 
-          // 불필요한 요소 제거 (스크립트, 스타일 등)
-          $('script, style, noscript, iframe, img, svg, video, audio').remove();
+          // 불필요한 요소 제거 (스크립트, 스타일, 네비게이션, 푸터 등)
+          // 네비게이션이나 푸터에 포함된 기업명으로 인해 오매칭되는 것을 방지 (할루시네이션 및 오매칭 원천 차단)
+          $('script, style, noscript, iframe, img, svg, video, audio, header, footer, nav, .header, .footer, .nav, .menu, #header, #footer, [role="navigation"], [role="banner"], [role="contentinfo"]').remove();
 
-          // 텍스트 추출 및 공백 정규화
-          const text = $('body').text().replace(/\s+/g, ' ');
-
-          // 정확히 일치하는 기업명이 있는지 확인 (할루시네이션 원천 차단)
-          if (text.includes(companyName)) {
-            return `[${coach.name}] ${coach.url}\n지역: ${coach.region}`;
+          // 텍스트 추출
+          const text = $('body').text();
+          
+          // 대소문자 및 띄어쓰기 구분 없이 확인 (엄격한 매칭 로직)
+          const normalizedText = text.toLowerCase().replace(/\s+/g, '');
+          const normalizedCompanyName = companyName.toLowerCase().replace(/\s+/g, '');
+          
+          if (normalizedText.includes(normalizedCompanyName)) {
+            // 사용자가 요청한 대로 추천 이유(whyChoose) 및 면접관 이력은 더 이상 표시하지 않음
+            return {
+              name: coach.name,
+              url: coach.url,
+              region: coach.region
+            };
           }
           
           return null;
-        } catch (error) {
-          console.warn(`Crawling failed for ${coach.url}:`, error);
+        } catch (error: any) {
           return null;
         }
       });
@@ -63,10 +71,10 @@ async function startServer() {
       const validCoaches = crawlResults.filter(Boolean);
 
       if (validCoaches.length === 0) {
-        return res.json({ result: "PASS" });
+        return res.json({ result: [] });
       }
 
-      res.json({ result: validCoaches.join('\n\n') });
+      res.json({ result: validCoaches });
     } catch (error: any) {
       console.error("Server API Error:", error);
       res.status(500).json({ error: error.message || String(error) });
